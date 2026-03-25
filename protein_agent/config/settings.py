@@ -129,9 +129,11 @@ class Settings:
     result_dir: str = "./data/results"
     analysis_dir: str = "./data/analysis"
     upload_dir: str = "./data/uploads"
+    converted_structures_dir: str = "./data/converted_structures"
 
     default_target_chain: str = "A"
     default_binder_chain: str = "B"
+    biopython_python: str | None = None
 
     bindcraft_dir: str | None = None
     bindcraft_python_path: str = sys.executable or "python"
@@ -261,6 +263,15 @@ class Settings:
                 base_dir=repo_root,
             )
             or defaults.upload_dir,
+            converted_structures_dir=_resolve_path(
+                _env_get(
+                    data,
+                    "PROTEIN_BINDER_AGENT_CONVERTED_STRUCTURES_DIR",
+                    agent_cfg.get("converted_structures_dir", defaults.converted_structures_dir),
+                ),
+                base_dir=repo_root,
+            )
+            or defaults.converted_structures_dir,
             default_target_chain=_env_get(
                 data, "PROTEIN_BINDER_AGENT_DEFAULT_TARGET_CHAIN", agent_cfg.get("default_target_chain", defaults.default_target_chain)
             )
@@ -269,6 +280,10 @@ class Settings:
                 data, "PROTEIN_BINDER_AGENT_DEFAULT_BINDER_CHAIN", agent_cfg.get("default_binder_chain", defaults.default_binder_chain)
             )
             or defaults.default_binder_chain,
+            biopython_python=_resolve_path(
+                _env_get(data, "PROTEIN_BINDER_AGENT_BIOPYTHON_PYTHON", agent_cfg.get("biopython_python")),
+                base_dir=repo_root,
+            ),
             bindcraft_dir=bindcraft_dir,
             bindcraft_python_path=_env_get(
                 data,

@@ -28,6 +28,8 @@ data_dir: ./data
 result_dir: ./data/results
 analysis_dir: ./data/analysis
 upload_dir: ./data/uploads
+converted_structures_dir: ./data/converted_structures
 
 default_target_chain: A
 default_binder_chain: B
+biopython_python: /mnt/disk3/tio_nekton4/biopython_env/bin/python

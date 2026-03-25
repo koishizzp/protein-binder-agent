@@ -24,8 +24,10 @@ def test_settings_reuse_esm3_openai_aliases(monkeypatch, tmp_path):
                 "data_dir": "./data",
                 "result_dir": "./data/results",
                 "analysis_dir": "./data/analysis",
+                "converted_structures_dir": "./data/converted_structures",
                 "default_target_chain": "A",
                 "default_binder_chain": "B",
+                "biopython_python": "/mnt/disk3/tio_nekton4/biopython_env/bin/python",
             }
         ),
         encoding="utf-8",
@@ -71,3 +73,5 @@ def test_settings_reuse_esm3_openai_aliases(monkeypatch, tmp_path):
     assert settings.complexa_dir == str((tmp_path / "external" / "Proteina-Complexa").resolve())
     assert settings.complexa_checkpoint_overrides()["ckpt_name"] == "complexa.ckpt"
     assert settings.complexa_checkpoint_overrides()["autoencoder_ckpt_path"].endswith("complexa_ae.ckpt")
+    assert settings.biopython_python == "/mnt/disk3/tio_nekton4/biopython_env/bin/python"
+    assert settings.converted_structures_dir == str((tmp_path / "data" / "converted_structures").resolve())

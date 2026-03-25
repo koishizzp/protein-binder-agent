@@ -90,6 +90,8 @@ The startup scripts read `.env` and support these deployment-specific variables:
 - `PROTEIN_BINDER_AGENT_LOG_DIR`
 - `PROTEIN_BINDER_AGENT_API_HOST`
 - `PROTEIN_BINDER_AGENT_API_PORT`
+- `PROTEIN_BINDER_AGENT_BIOPYTHON_PYTHON`
+- `PROTEIN_BINDER_AGENT_CONVERTED_STRUCTURES_DIR`
 
 If `complexa` is not on `PATH`, set one of:
 
@@ -147,6 +149,7 @@ curl -X POST http://127.0.0.1:8200/v1/chat/completions \
 - `BindCraft` is wrapped with the upstream-style target settings JSON and `bindcraft.py --settings ...` execution model.
 - `Proteina-Complexa` is wrapped around the official `complexa validate` and `complexa design` CLI flow.
 - The agent now automatically injects `ckpt_path`, `ckpt_name`, and `autoencoder_ckpt_path` into Complexa runs when they are configured.
+- `.cif`, `.mmcif`, and `.ent` inputs are now normalized to `.pdb` before PDB-only workflows. The agent will use in-process BioPython when available, or the external interpreter from `PROTEIN_BINDER_AGENT_BIOPYTHON_PYTHON`.
 - The root-level deployment scripts are Linux-oriented and intended for the server where `/mnt/disk3/tio_nekton4/...` exists.
 - `Proteina-Complexa` still depends on its own task/config preparation model. If your target is not already prepared in that repo, you may need to add or register the target there first.
 - `MDAnalysis` is used for ranking. The current full pipeline scores candidates with interface contacts, hydrogen-bond count, interface residue count, and a shape-complementarity proxy.

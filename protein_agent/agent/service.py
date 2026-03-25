@@ -5,6 +5,7 @@ from typing import Any
 
 from protein_agent.config.settings import Settings, get_settings
 from protein_agent.pipeline.orchestrator import PipelineOrchestrator
+from protein_agent.tools import structure_tool
 from protein_agent.tools import BindCraftTool, ComplexaTool, MDAnalysisTool, ToolResult
 
 
@@ -55,6 +56,7 @@ class ProteinBinderService:
     def tool_status(self) -> dict[str, Any]:
         bindcraft_root = Path(self.settings.bindcraft_dir) if self.settings.bindcraft_dir else None
         complexa_root = Path(self.settings.complexa_dir) if self.settings.complexa_dir else None
+        biopython_python = Path(self.settings.biopython_python) if self.settings.biopython_python else None
         return {
             "module": "status",
             "workflows": self.settings.workflow_profiles,
@@ -63,6 +65,7 @@ class ProteinBinderService:
                 "result_dir": self.settings.result_dir,
                 "analysis_dir": self.settings.analysis_dir,
                 "upload_dir": self.settings.upload_dir,
+                "converted_structures_dir": self.settings.converted_structures_dir,
             },
             "tools": {
                 "bindcraft": {
@@ -81,8 +84,28 @@ class ProteinBinderService:
                     "default_analysis": self.settings.mdanalysis_default_analysis,
                     "default_cutoff": self.settings.mdanalysis_default_cutoff,
                 },
+                "biopython_converter": {
+                    "configured": bool(self.settings.biopython_python),
+                    "python": self.settings.biopython_python,
+                    "python_exists": bool(biopython_python and biopython_python.exists()),
+                },
             },
         }
+
+    def _ensure_pdb_structure(
+        self,
+        structure_file: str,
+        *,
+        purpose: str,
+        output_name: str | None = None,
+    ) -> dict[str, Any]:
+        target_dir = Path(self.settings.converted_structures_dir) / purpose
+        return structure_tool.ensure_pdb_structure(
+            structure_file,
+            output_dir=str(target_dir),
+            output_name=output_name,
+            biopython_python=self.settings.biopython_python,
+        )
 
     def _tool_response(self, module: str, request: dict[str, Any], result: ToolResult) -> dict[str, Any]:
         return {
@@ -114,9 +137,14 @@ class ProteinBinderService:
         trajectory_file: str | None = None,
     ) -> dict[str, Any]:
         resolved_analysis = analysis_type or self.settings.mdanalysis_default_analysis
+        normalized = self._ensure_pdb_structure(
+            structure_file,
+            purpose="analysis",
+            output_name=Path(structure_file).stem,
+        )
         result = self.mda.run(
             resolved_analysis,
-            structure_file,
+            normalized["resolved_path"],
             topology_file=topology_file,
             trajectory_file=trajectory_file,
             binder_chain=binder_chain or self.settings.default_binder_chain,
@@ -128,10 +156,12 @@ class ProteinBinderService:
             "mdanalysis",
             {
                 "analysis_type": resolved_analysis,
-                "structure_file": structure_file,
+                "input_structure_file": structure_file,
+                "structure_file": normalized["resolved_path"],
                 "binder_chain": binder_chain or self.settings.default_binder_chain,
                 "target_chain": target_chain or self.settings.default_target_chain,
                 "cutoff": cutoff or self.settings.mdanalysis_default_cutoff,
+                "structure_conversion": normalized,
             },
             result,
         )
@@ -147,8 +177,13 @@ class ProteinBinderService:
         run_name: str = "bindcraft_run",
         output_dir: str | None = None,
     ) -> dict[str, Any]:
-        result = self.bindcraft.run(
+        normalized = self._ensure_pdb_structure(
             target_pdb,
+            purpose=f"bindcraft/{run_name}",
+            output_name=f"{Path(target_pdb).stem}_target",
+        )
+        result = self.bindcraft.run(
+            normalized["resolved_path"],
             target_hotspot=target_hotspot,
             target_chains=target_chain or self.settings.default_target_chain,
             binder_length=binder_length or self.settings.bindcraft_default_binder_length,
@@ -159,12 +194,14 @@ class ProteinBinderService:
         return self._tool_response(
             "bindcraft",
             {
-                "target_pdb": target_pdb,
+                "input_structure_file": target_pdb,
+                "target_pdb": normalized["resolved_path"],
                 "target_hotspot": target_hotspot,
                 "target_chain": target_chain or self.settings.default_target_chain,
                 "binder_length": binder_length or self.settings.bindcraft_default_binder_length,
                 "num_designs": num_designs or self.settings.bindcraft_default_num_designs,
                 "run_name": run_name,
+                "structure_conversion": normalized,
             },
             result,
         )
@@ -215,8 +252,13 @@ class ProteinBinderService:
         use_complexa: bool | None = None,
         use_bindcraft: bool | None = None,
     ) -> dict[str, Any]:
-        return self.orchestrator.full_design_and_analysis_pipeline(
-            target_pdb=target_pdb,
+        normalized = self._ensure_pdb_structure(
+            target_pdb,
+            purpose=f"pipeline/{run_name}",
+            output_name=f"{Path(target_pdb).stem}_target",
+        )
+        result = self.orchestrator.full_design_and_analysis_pipeline(
+            target_pdb=normalized["resolved_path"],
             workflow=workflow or self.settings.default_workflow,
             hotspot=hotspot,
             binder_length=binder_length or self.settings.bindcraft_default_binder_length,
@@ -231,6 +273,12 @@ class ProteinBinderService:
             complexa_gen_njobs=self.settings.complexa_gen_njobs,
             complexa_eval_njobs=self.settings.complexa_eval_njobs,
         )
+        request = result.get("request") if isinstance(result.get("request"), dict) else {}
+        request["input_structure_file"] = target_pdb
+        request["target_pdb"] = normalized["resolved_path"]
+        request["structure_conversion"] = normalized
+        result["request"] = request
+        return result
 
     def execute_plan(self, plan: dict[str, Any]) -> dict[str, Any]:
         module = str(plan.get("module") or "").strip()

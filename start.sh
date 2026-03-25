@@ -23,6 +23,7 @@ mkdir -p "${PROTEIN_BINDER_AGENT_DATA_DIR:-$ROOT_DIR/data}"
 mkdir -p "${PROTEIN_BINDER_AGENT_RESULT_DIR:-$ROOT_DIR/data/results}"
 mkdir -p "${PROTEIN_BINDER_AGENT_ANALYSIS_DIR:-$ROOT_DIR/data/analysis}"
 mkdir -p "${PROTEIN_BINDER_AGENT_UPLOAD_DIR:-$ROOT_DIR/data/uploads}"
+mkdir -p "${PROTEIN_BINDER_AGENT_CONVERTED_STRUCTURES_DIR:-$ROOT_DIR/data/converted_structures}"
 
 if [[ -f "$PID_FILE" ]]; then
   OLD_PID="$(cat "$PID_FILE" 2>/dev/null || true)"

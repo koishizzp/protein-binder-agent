@@ -185,7 +185,7 @@ class LLMPlanner:
             }
             if structure_path is None:
                 plan["action"] = "clarify"
-                plan["question"] = "请提供要分析的结构文件路径，例如 /path/to/complex.pdb"
+                plan["question"] = "请提供要分析的结构文件路径，例如 /path/to/complex.pdb 或 /path/to/complex.cif"
             return plan
 
         if "complexa" in lowered or "proteina-complexa" in lowered:
@@ -224,7 +224,7 @@ class LLMPlanner:
             }
             if structure_path is None:
                 plan["action"] = "clarify"
-                plan["question"] = "请提供 BindCraft 需要的目标结构文件路径，例如 /path/to/target.pdb"
+                plan["question"] = "请提供 BindCraft 需要的目标结构文件路径，例如 /path/to/target.pdb 或 /path/to/target.cif"
             return plan
 
         workflow = self._infer_workflow(message, preferred_workflow)
@@ -247,7 +247,7 @@ class LLMPlanner:
         }
         if structure_path is None:
             plan["action"] = "clarify"
-            plan["question"] = "请提供目标结构文件路径，我才能调度 BindCraft / MDAnalysis / Proteina-Complexa 流程。"
+            plan["question"] = "请提供目标结构文件路径（.pdb/.cif/.mmcif），我才能调度 BindCraft / MDAnalysis / Proteina-Complexa 流程。"
         return plan
 
     def _sanitize_plan(
