@@ -83,9 +83,9 @@ def _resolve_path(value: str | None, *, base_dir: Path) -> str | None:
         return None
     if value.startswith("/"):
         return value
-    candidate = Path(value)
+    candidate = Path(value).expanduser()
     if candidate.is_absolute():
-        return str(candidate)
+        return str(candidate.resolve())
     return str((base_dir / candidate).resolve())
 
 

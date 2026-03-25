@@ -93,6 +93,12 @@ class ComplexaTool(BaseTool):
         add(["complexa"])
         return candidates
 
+    def _command_candidates_summary(self) -> str:
+        candidates = self._command_candidates()
+        if not candidates:
+            return "(no candidates)"
+        return "; ".join(" ".join(command) for command in candidates)
+
     def _probe_command(self, command: list[str]) -> bool:
         head = command[0]
         if not self._path_exists(head):
@@ -216,7 +222,8 @@ class ComplexaTool(BaseTool):
                 self.name,
                 error=(
                     "No usable complexa command was found. "
-                    "Set PROTEIN_BINDER_AGENT_COMPLEXA_CLI or PROTEIN_BINDER_AGENT_COMPLEXA_PYTHON."
+                    "Set PROTEIN_BINDER_AGENT_COMPLEXA_CLI or PROTEIN_BINDER_AGENT_COMPLEXA_PYTHON. "
+                    f"Checked candidates: {self._command_candidates_summary()}"
                 ),
             )
         design_command = prefix + [

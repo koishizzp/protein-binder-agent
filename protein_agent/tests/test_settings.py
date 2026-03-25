@@ -75,3 +75,20 @@ def test_settings_reuse_esm3_openai_aliases(monkeypatch, tmp_path):
     assert settings.complexa_checkpoint_overrides()["autoencoder_ckpt_path"].endswith("complexa_ae.ckpt")
     assert settings.biopython_python == "/mnt/disk3/tio_nekton4/biopython_env/bin/python"
     assert settings.converted_structures_dir == str((tmp_path / "data" / "converted_structures").resolve())
+
+
+def test_settings_expand_user_paths_from_env(monkeypatch, tmp_path):
+    config_dir = tmp_path / "protein_agent" / "config"
+    config_dir.mkdir(parents=True)
+
+    agent_config = config_dir / "agent_config.yaml"
+    agent_config.write_text(yaml.safe_dump({}), encoding="utf-8")
+
+    monkeypatch.setenv("PROTEIN_BINDER_AGENT_CONFIG", str(agent_config))
+    monkeypatch.setenv("PROTEIN_BINDER_AGENT_COMPLEXA_DIR", "~/Proteina-Complexa")
+    monkeypatch.setenv("PROTEIN_BINDER_AGENT_COMPLEXA_PYTHON", "~/.venvs/complexa/bin/python")
+
+    settings = Settings.from_env()
+
+    assert settings.complexa_dir == str(Path("~/Proteina-Complexa").expanduser().resolve())
+    assert settings.complexa_venv_python == str(Path("~/.venvs/complexa/bin/python").expanduser().resolve())

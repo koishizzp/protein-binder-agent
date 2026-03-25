@@ -106,6 +106,23 @@ The BindCraft wrapper now tries to auto-detect a local environment with `pyroset
 under the BindCraft repo, but if that fails you still need to set
 `PROTEIN_BINDER_AGENT_BINDCRAFT_PYTHON` explicitly.
 
+In practice, do not point these variables at your shell's default `python`
+unless it already works. Verify the exact executable first:
+
+```bash
+/path/to/bindcraft/python -c "import pyrosetta; print('pyrosetta ok')"
+/path/to/complexa/python -m complexa --help
+# or
+/path/to/complexa/bin/complexa --help
+```
+
+If `pyrosetta` is available but `complexa` is not installed on that machine,
+set:
+
+```bash
+PROTEIN_BINDER_AGENT_DEFAULT_WORKFLOW=bindcraft_only
+```
+
 ## Run
 
 CLI from repo root:

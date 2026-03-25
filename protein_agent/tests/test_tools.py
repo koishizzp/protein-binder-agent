@@ -32,7 +32,7 @@ def test_bindcraft_tool_writes_upstream_style_settings(monkeypatch, tmp_path):
             self.stdout = stdout
             self.stderr = stderr
 
-    def fake_run(command, cwd, capture_output, text, timeout):
+    def fake_run(command, cwd=None, capture_output=True, text=True, timeout=0):
         if command[-1] == "import pyrosetta":
             return Completed()
         settings_path = Path(command[command.index("--settings") + 1])
@@ -78,7 +78,7 @@ def test_complexa_tool_prefers_working_cli_candidate(monkeypatch, tmp_path):
             self.stdout = stdout
             self.stderr = stderr
 
-    def fake_run(command, cwd, capture_output, text, timeout):
+    def fake_run(command, cwd=None, capture_output=True, text=True, timeout=0):
         if command[:1] == [str(cli_path)] and command[-1] == "--help":
             return Completed(returncode=0)
         return Completed(returncode=1, stderr="bad candidate")
@@ -87,3 +87,32 @@ def test_complexa_tool_prefers_working_cli_candidate(monkeypatch, tmp_path):
 
     tool = ComplexaTool(str(complexa_dir))
     assert tool._command_prefix() == [str(cli_path)]
+
+
+def test_bindcraft_tool_reports_checked_candidates_when_pyrosetta_missing(tmp_path):
+    bindcraft_dir = tmp_path / "BindCraft"
+    bindcraft_dir.mkdir()
+    (bindcraft_dir / "bindcraft.py").write_text("print('bindcraft')", encoding="utf-8")
+    target_pdb = tmp_path / "target.pdb"
+    target_pdb.write_text("HEADER TARGET\n", encoding="utf-8")
+
+    tool = BindCraftTool(str(bindcraft_dir), python_executable="/custom/python")
+    result = tool.run(str(target_pdb))
+
+    assert result.success is False
+    assert "Checked candidates:" in (result.error or "")
+    assert "/custom/python" in (result.error or "")
+
+
+def test_complexa_tool_reports_checked_candidates_when_cli_missing(tmp_path):
+    complexa_dir = tmp_path / "Proteina-Complexa"
+    config_path = complexa_dir / "examples" / "configs" / "search_binder_local_pipeline.yaml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("defaults: []\n", encoding="utf-8")
+
+    tool = ComplexaTool(str(complexa_dir), python_executable="/custom/python", cli_path="/custom/complexa")
+    result = tool.run("demo")
+
+    assert result.success is False
+    assert "Checked candidates:" in (result.error or "")
+    assert "/custom/complexa" in (result.error or "")

@@ -82,6 +82,12 @@ class BindCraftTool(BaseTool):
         add("python")
         return candidates
 
+    def _python_candidates_summary(self) -> str:
+        candidates = self._python_candidates()
+        if not candidates:
+            return "(no candidates)"
+        return ", ".join(candidates)
+
     def _python_exists(self, python_executable: str) -> bool:
         if "/" in python_executable or "\\" in python_executable:
             return Path(python_executable).exists()
@@ -177,7 +183,8 @@ class BindCraftTool(BaseTool):
                 self.name,
                 error=(
                     "No BindCraft Python interpreter with pyrosetta available was found. "
-                    "Set PROTEIN_BINDER_AGENT_BINDCRAFT_PYTHON to the correct environment."
+                    "Set PROTEIN_BINDER_AGENT_BINDCRAFT_PYTHON to the correct environment. "
+                    f"Checked candidates: {self._python_candidates_summary()}"
                 ),
             )
 
