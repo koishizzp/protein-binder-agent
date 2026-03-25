@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 import logging
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
@@ -28,15 +29,7 @@ app = FastAPI(title="Protein Binder Agent", version="2.0.0")
 
 @lru_cache(maxsize=1)
 def load_chat_ui() -> str:
-    return """
-    <html>
-      <head><title>Protein Binder Agent</title></head>
-      <body>
-        <h1>Protein Binder Agent</h1>
-        <p>Use the REST endpoints or the OpenAI-compatible <code>/v1/chat/completions</code> endpoint.</p>
-      </body>
-    </html>
-    """
+    return Path(__file__).with_name("chat_ui.html").read_text(encoding="utf-8")
 
 
 class BindCraftRequest(BaseModel):

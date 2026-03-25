@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Protein Binder Agent</title>
+    <style>
+      :root {
+        --bg: #f4efe4;
+        --paper: #fbf8f1;
+        --ink: #1f2a24;
+        --muted: #61706a;
+        --line: #d8cfbf;
+        --accent: #1f6b53;
+        --accent-2: #b85c38;
+        --shadow: 0 18px 40px rgba(31, 42, 36, 0.08);
+        --radius: 22px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(184, 92, 56, 0.14), transparent 28%),
+          radial-gradient(circle at top right, rgba(31, 107, 83, 0.16), transparent 26%),
+          linear-gradient(180deg, #f8f4eb 0%, var(--bg) 100%);
+        min-height: 100vh;
+      }
+
+      .shell {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 28px;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: 1.3fr 0.7fr;
+        gap: 18px;
+        margin-bottom: 20px;
+      }
+
+      .hero-card,
+      .panel {
+        background: rgba(251, 248, 241, 0.88);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(216, 207, 191, 0.9);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+      }
+
+      .hero-card {
+        padding: 26px 28px;
+      }
+
+      .hero h1 {
+        margin: 0 0 8px;
+        font-family: "Aptos Display", "Trebuchet MS", sans-serif;
+        font-size: clamp(2rem, 4vw, 3.8rem);
+        line-height: 0.98;
+        letter-spacing: -0.04em;
+      }
+
+      .hero p {
+        margin: 0;
+        max-width: 780px;
+        color: var(--muted);
+        font-size: 1rem;
+        line-height: 1.6;
+      }
+
+      .status-card {
+        padding: 22px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .status-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .status-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.54);
+      }
+
+      .status-label {
+        color: var(--muted);
+        font-size: 0.88rem;
+      }
+
+      .status-value {
+        font-weight: 700;
+      }
+
+      .workspace {
+        display: grid;
+        grid-template-columns: minmax(0, 1.65fr) minmax(320px, 0.9fr);
+        gap: 18px;
+      }
+
+      .panel {
+        overflow: hidden;
+      }
+
+      .panel-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 18px 20px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .panel-title {
+        font-family: "Aptos Display", "Trebuchet MS", sans-serif;
+        font-size: 1.2rem;
+        margin: 0;
+      }
+
+      .chat-body {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        min-height: 720px;
+      }
+
+      .messages {
+        padding: 20px;
+        overflow: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.54), rgba(255, 255, 255, 0.3)),
+          repeating-linear-gradient(
+            180deg,
+            rgba(216, 207, 191, 0.2),
+            rgba(216, 207, 191, 0.2) 1px,
+            transparent 1px,
+            transparent 34px
+          );
+      }
+
+      .message {
+        max-width: 88%;
+        padding: 14px 16px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        white-space: pre-wrap;
+        line-height: 1.55;
+        animation: rise 180ms ease-out;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        background: rgba(31, 107, 83, 0.1);
+        border-color: rgba(31, 107, 83, 0.22);
+      }
+
+      .message.assistant {
+        align-self: flex-start;
+        background: rgba(184, 92, 56, 0.08);
+        border-color: rgba(184, 92, 56, 0.22);
+      }
+
+      .message.system {
+        align-self: center;
+        background: rgba(97, 112, 106, 0.08);
+        color: var(--muted);
+      }
+
+      @keyframes rise {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .composer {
+        padding: 18px;
+        border-top: 1px solid var(--line);
+        background: rgba(251, 248, 241, 0.96);
+      }
+
+      .composer-grid {
+        display: grid;
+        gap: 12px;
+      }
+
+      .row {
+        display: grid;
+        gap: 10px;
+      }
+
+      .row.controls {
+        grid-template-columns: minmax(0, 1fr) 170px 160px;
+      }
+
+      textarea,
+      select,
+      input,
+      button {
+        font: inherit;
+      }
+
+      textarea,
+      select,
+      input {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--ink);
+      }
+
+      textarea {
+        min-height: 108px;
+        resize: vertical;
+        padding: 14px;
+      }
+
+      select,
+      input {
+        padding: 12px 14px;
+      }
+
+      .button-row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 11px 18px;
+        cursor: pointer;
+        transition: transform 120ms ease, opacity 120ms ease, background 120ms ease;
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+        transform: none;
+      }
+
+      .primary {
+        background: var(--accent);
+        color: #fff;
+      }
+
+      .secondary {
+        background: rgba(31, 42, 36, 0.08);
+        color: var(--ink);
+      }
+
+      .danger {
+        background: rgba(184, 92, 56, 0.14);
+        color: #8e3515;
+      }
+
+      .side-stack {
+        display: grid;
+        gap: 18px;
+        align-content: start;
+      }
+
+      .side-content {
+        padding: 18px 20px 20px;
+        display: grid;
+        gap: 14px;
+      }
+
+      .hint-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .hint {
+        padding: 12px 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: rgba(255, 255, 255, 0.56);
+      }
+
+      .hint button {
+        margin-top: 10px;
+      }
+
+      pre {
+        margin: 0;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid var(--line);
+        background: #f6f1e7;
+        overflow: auto;
+        font-family: "IBM Plex Mono", Consolas, monospace;
+        font-size: 0.84rem;
+        line-height: 1.45;
+      }
+
+      .tiny {
+        color: var(--muted);
+        font-size: 0.84rem;
+        line-height: 1.5;
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+
+      .chip {
+        border-radius: 999px;
+        padding: 7px 12px;
+        background: rgba(31, 42, 36, 0.07);
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      @media (max-width: 1080px) {
+        .hero,
+        .workspace,
+        .row.controls {
+          grid-template-columns: 1fr;
+        }
+
+        .chat-body {
+          min-height: 620px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="hero-card">
+          <h1>Protein Binder Agent</h1>
+          <p>
+            这个页面现在可以直接驱动当前仓库的 agent。它会调用
+            <code>/v1/chat/completions</code>，保留最近一次执行结果作为上下文，并支持继续追问为什么某个候选更好。
+          </p>
+        </div>
+        <div class="hero-card status-card">
+          <div class="status-grid" id="statusGrid">
+            <div class="status-row">
+              <span class="status-label">Agent</span>
+              <span class="status-value" id="agentStatus">加载中</span>
+            </div>
+            <div class="status-row">
+              <span class="status-label">LLM</span>
+              <span class="status-value" id="llmStatus">加载中</span>
+            </div>
+            <div class="status-row">
+              <span class="status-label">Workflow</span>
+              <span class="status-value" id="workflowStatus">加载中</span>
+            </div>
+            <div class="status-row">
+              <span class="status-label">BindCraft</span>
+              <span class="status-value" id="bindcraftStatus">加载中</span>
+            </div>
+            <div class="status-row">
+              <span class="status-label">Complexa</span>
+              <span class="status-value" id="complexaStatus">加载中</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <section class="panel">
+          <div class="panel-header">
+            <h2 class="panel-title">Agent Chat</h2>
+            <div class="chip-row">
+              <span class="chip" id="modeChip">mode: execution</span>
+              <span class="chip" id="contextChip">context: empty</span>
+            </div>
+          </div>
+          <div class="chat-body">
+            <div class="messages" id="messages">
+              <div class="message system">
+                先试一个简单请求，例如 “status” 或 “use the full pipeline for /path/to/target.pdb”。
+              </div>
+            </div>
+            <div class="composer">
+              <div class="composer-grid">
+                <div class="row controls">
+                  <input id="modelInput" value="protein-binder-design-agent" />
+                  <select id="workflowSelect">
+                    <option value="">auto workflow</option>
+                    <option value="balanced">balanced</option>
+                    <option value="complexa_only">complexa_only</option>
+                    <option value="bindcraft_only">bindcraft_only</option>
+                  </select>
+                  <button class="secondary" id="statusButton" type="button">刷新状态</button>
+                </div>
+                <div class="row">
+                  <textarea
+                    id="promptInput"
+                    placeholder="输入自然语言请求，例如：use the full pipeline for /mnt/disk3/targets/PDL1.pdb and rank the binders"
+                  ></textarea>
+                </div>
+                <div class="button-row">
+                  <button class="primary" id="sendButton" type="button">发送</button>
+                  <button class="secondary" id="reasonButton" type="button">继续追问为什么</button>
+                  <button class="danger" id="clearButton" type="button">清空上下文</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Quick Prompts</h2>
+            </div>
+            <div class="side-content hint-grid">
+              <div class="hint">
+                <div>查看服务状态和工具配置。</div>
+                <button class="secondary prompt-fill" data-prompt="status">填入</button>
+              </div>
+              <div class="hint">
+                <div>跑完整设计流程。</div>
+                <button class="secondary prompt-fill" data-prompt="use the full pipeline for /mnt/disk3/targets/PDL1.pdb and rank the binders">填入</button>
+              </div>
+              <div class="hint">
+                <div>只跑 BindCraft。</div>
+                <button class="secondary prompt-fill" data-prompt="use bindcraft on /mnt/disk3/targets/PDL1.pdb hotspot A54,A56 run_name=pdl1_bindcraft">填入</button>
+              </div>
+              <div class="hint">
+                <div>分析一个复合物结构。</div>
+                <button class="secondary prompt-fill" data-prompt="analyze /mnt/disk3/results/complex.pdb with full report">填入</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Context</h2>
+            </div>
+            <div class="side-content">
+              <div class="tiny">
+                这里展示最近一次 agent 执行返回的上下文。后续追问会自动带上这些对象。
+              </div>
+              <pre id="contextPreview">null</pre>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Raw Response</h2>
+            </div>
+            <div class="side-content">
+              <pre id="rawResponse">等待请求</pre>
+            </div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        conversation: [],
+        latestResult: null,
+        reasoningContext: null,
+        previousBestDesign: null,
+        lastResponse: null,
+      };
+
+      const messagesEl = document.getElementById("messages");
+      const promptInput = document.getElementById("promptInput");
+      const modelInput = document.getElementById("modelInput");
+      const workflowSelect = document.getElementById("workflowSelect");
+      const rawResponseEl = document.getElementById("rawResponse");
+      const contextPreviewEl = document.getElementById("contextPreview");
+      const modeChip = document.getElementById("modeChip");
+      const contextChip = document.getElementById("contextChip");
+
+      function appendMessage(role, content) {
+        state.conversation.push({ role, content });
+        const node = document.createElement("div");
+        node.className = `message ${role === "user" ? "user" : "assistant"}`;
+        node.textContent = content;
+        messagesEl.appendChild(node);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function appendSystem(content) {
+        const node = document.createElement("div");
+        node.className = "message system";
+        node.textContent = content;
+        messagesEl.appendChild(node);
+        messagesEl.scrollTop = messagesEl.scrollHeight;
+      }
+
+      function safeJson(value) {
+        return JSON.stringify(value, null, 2);
+      }
+
+      function updateContextView() {
+        contextPreviewEl.textContent = safeJson({
+          latestResult: state.latestResult,
+          reasoningContext: state.reasoningContext,
+          previousBestDesign: state.previousBestDesign,
+        });
+        rawResponseEl.textContent = state.lastResponse ? safeJson(state.lastResponse) : "等待请求";
+        const mode = state.lastResponse?.chat_mode || state.reasoningContext?.chat_mode || "execution";
+        modeChip.textContent = `mode: ${mode}`;
+        contextChip.textContent = state.latestResult ? "context: loaded" : "context: empty";
+      }
+
+      async function refreshStatus() {
+        const response = await fetch("/ui/status");
+        const payload = await response.json();
+        document.getElementById("agentStatus").textContent = payload.agent?.status || "unknown";
+        document.getElementById("llmStatus").textContent = payload.llm?.configured
+          ? payload.llm.model || "configured"
+          : "not configured";
+        document.getElementById("workflowStatus").textContent =
+          Object.keys(payload.binder_agent?.workflows || {}).join(", ") || "n/a";
+        document.getElementById("bindcraftStatus").textContent =
+          payload.binder_agent?.tools?.bindcraft?.entrypoint_exists ? "ready" : "not ready";
+        document.getElementById("complexaStatus").textContent =
+          payload.binder_agent?.tools?.["proteina-complexa"]?.configured ? "configured" : "not configured";
+      }
+
+      async function sendMessage(message) {
+        appendMessage("user", message);
+        const payload = {
+          model: modelInput.value || "protein-binder-design-agent",
+          messages: state.conversation,
+          latest_result: state.latestResult,
+          previous_best_design: state.previousBestDesign,
+          reasoning_context: state.reasoningContext,
+          preferred_workflow: workflowSelect.value || null,
+        };
+
+        const response = await fetch("/v1/chat/completions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+        state.lastResponse = data;
+        if (!response.ok) {
+          appendMessage("assistant", `请求失败: ${data.detail || response.status}`);
+          updateContextView();
+          return;
+        }
+
+        const text = data?.choices?.[0]?.message?.content || "(empty response)";
+        appendMessage("assistant", text);
+
+        if (data.operation_result) {
+          state.latestResult = data.operation_result;
+        }
+        if (data.reasoning_context) {
+          state.reasoningContext = data.reasoning_context;
+        }
+        if (data.best_design?.pdb) {
+          state.previousBestDesign = data.best_design.pdb;
+        } else if (state.latestResult?.best_design?.pdb) {
+          state.previousBestDesign = state.latestResult.best_design.pdb;
+        }
+
+        updateContextView();
+      }
+
+      document.getElementById("sendButton").addEventListener("click", async () => {
+        const message = promptInput.value.trim();
+        if (!message) {
+          appendSystem("请输入请求。");
+          return;
+        }
+        promptInput.value = "";
+        await sendMessage(message);
+      });
+
+      promptInput.addEventListener("keydown", async (event) => {
+        if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+          event.preventDefault();
+          document.getElementById("sendButton").click();
+        }
+      });
+
+      document.getElementById("reasonButton").addEventListener("click", async () => {
+        if (!state.latestResult) {
+          appendSystem("还没有可继续追问的结果，先执行一次设计或分析。");
+          return;
+        }
+        const message = promptInput.value.trim() || "why is this candidate better than the others?";
+        promptInput.value = "";
+        await sendMessage(message);
+      });
+
+      document.getElementById("clearButton").addEventListener("click", () => {
+        state.conversation = [];
+        state.latestResult = null;
+        state.reasoningContext = null;
+        state.previousBestDesign = null;
+        state.lastResponse = null;
+        messagesEl.innerHTML = "";
+        appendSystem("上下文已清空。");
+        updateContextView();
+      });
+
+      document.getElementById("statusButton").addEventListener("click", async () => {
+        await refreshStatus();
+        appendSystem("状态已刷新。");
+      });
+
+      document.querySelectorAll(".prompt-fill").forEach((button) => {
+        button.addEventListener("click", () => {
+          promptInput.value = button.dataset.prompt || "";
+          promptInput.focus();
+        });
+      });
+
+      refreshStatus().catch(() => {
+        appendSystem("状态面板加载失败，请确认服务端依然在线。");
+      });
+      updateContextView();
+    </script>
+  </body>
+</html>

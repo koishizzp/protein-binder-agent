@@ -118,6 +118,17 @@ def test_ui_status_contains_llm_and_tool_status(monkeypatch):
     assert payload["binder_agent"]["tools"]["bindcraft"]["entrypoint_exists"] is True
 
 
+def test_home_returns_interactive_chat_ui():
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Agent Chat" in response.text
+    assert "/v1/chat/completions" in response.text
+
+
 def test_run_pipeline_endpoint(monkeypatch):
     monkeypatch.setattr("protein_agent.api.main.get_service", lambda: DummyService())
     client = TestClient(app)
