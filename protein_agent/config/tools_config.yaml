@@ -1,0 +1,14 @@
+bindcraft:
+  default_binder_length: 80
+  default_num_designs: 10
+  timeout_seconds: 10800
+
+proteina_complexa:
+  default_pipeline: binder
+  gen_njobs: 1
+  eval_njobs: 1
+  timeout_seconds: 7200
+
+mdanalysis:
+  default_cutoff: 5.0
+  default_analysis: full_report

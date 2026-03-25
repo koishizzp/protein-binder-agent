@@ -1,0 +1,11 @@
+default_workflow: balanced
+workflows:
+  balanced:
+    use_complexa: true
+    use_bindcraft: true
+  complexa_only:
+    use_complexa: true
+    use_bindcraft: false
+  bindcraft_only:
+    use_complexa: false
+    use_bindcraft: true
