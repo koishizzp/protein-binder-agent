@@ -63,3 +63,27 @@ def test_complexa_tool_discovers_nested_pipeline_config(tmp_path):
     resolved = tool._resolved_pipeline_config("binder")
 
     assert resolved == config_path
+
+
+def test_complexa_tool_prefers_working_cli_candidate(monkeypatch, tmp_path):
+    complexa_dir = tmp_path / "Proteina-Complexa"
+    complexa_dir.mkdir()
+    cli_path = complexa_dir / ".venv" / "bin" / "complexa"
+    cli_path.parent.mkdir(parents=True)
+    cli_path.write_text("", encoding="utf-8")
+
+    class Completed:
+        def __init__(self, returncode=0, stdout="", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
+
+    def fake_run(command, cwd, capture_output, text, timeout):
+        if command[:1] == [str(cli_path)] and command[-1] == "--help":
+            return Completed(returncode=0)
+        return Completed(returncode=1, stderr="bad candidate")
+
+    monkeypatch.setattr("protein_agent.tools.complexa_tool.subprocess.run", fake_run)
+
+    tool = ComplexaTool(str(complexa_dir))
+    assert tool._command_prefix() == [str(cli_path)]

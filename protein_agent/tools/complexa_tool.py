@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,6 +40,80 @@ class ComplexaTool(BaseTool):
         self.config_dir = Path(config_dir).expanduser().resolve() if config_dir else None
         self.default_overrides = dict(default_overrides or {})
         self.timeout_seconds = timeout_seconds
+
+    def _path_exists(self, value: str | None) -> bool:
+        if not value:
+            return False
+        if "/" in value or "\\" in value:
+            return Path(value).exists()
+        return True
+
+    def _command_candidates(self) -> list[list[str]]:
+        candidates: list[list[str]] = []
+        seen: set[tuple[str, ...]] = set()
+
+        def add(command: list[str]) -> None:
+            normalized = tuple(command)
+            if not normalized or normalized in seen:
+                return
+            seen.add(normalized)
+            candidates.append(command)
+
+        if self.cli_path:
+            add([self.cli_path])
+
+        if self.complexa_dir:
+            root = self.complexa_dir
+            for relative in (
+                ".venv/bin/complexa",
+                "venv/bin/complexa",
+                "env/bin/complexa",
+                ".venv/bin/python",
+                "venv/bin/python",
+                "env/bin/python",
+                "../.venv/bin/complexa",
+                "../venv/bin/complexa",
+                "../.venv/bin/python",
+                "../venv/bin/python",
+            ):
+                path = (root / relative).resolve()
+                if path.name == "complexa":
+                    add([str(path)])
+                else:
+                    add([str(path), "-m", "complexa"])
+
+        if self.python_executable:
+            add([self.python_executable, "-m", "complexa"])
+
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            add([str((Path(conda_prefix) / "bin" / "complexa").resolve())])
+            add([str((Path(conda_prefix) / "bin" / "python").resolve()), "-m", "complexa"])
+
+        add(["complexa"])
+        return candidates
+
+    def _probe_command(self, command: list[str]) -> bool:
+        head = command[0]
+        if not self._path_exists(head):
+            return False
+        try:
+            result = subprocess.run(
+                command + ["--help"],
+                cwd=self.complexa_dir,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            return result.returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _command_prefix(self) -> list[str] | None:
+        for candidate in self._command_candidates():
+            if self._probe_command(candidate):
+                return candidate
+        return None
 
     def _resolved_config_dir(self) -> Path | None:
         if self.config_dir:
@@ -91,13 +166,6 @@ class ComplexaTool(BaseTool):
                 return hits[0]
         return None
 
-    def _command_prefix(self) -> list[str]:
-        if self.cli_path:
-            return [self.cli_path]
-        if self.python_executable:
-            return [self.python_executable, "-m", "complexa"]
-        return ["complexa"]
-
     def _discover_outputs(self, start_time: datetime) -> list[str]:
         if not self.complexa_dir:
             return []
@@ -142,6 +210,15 @@ class ComplexaTool(BaseTool):
             return ToolResult(False, self.name, error=f"Pipeline config not found for '{pipeline}'")
 
         prefix = self._command_prefix()
+        if not prefix:
+            return ToolResult(
+                False,
+                self.name,
+                error=(
+                    "No usable complexa command was found. "
+                    "Set PROTEIN_BINDER_AGENT_COMPLEXA_CLI or PROTEIN_BINDER_AGENT_COMPLEXA_PYTHON."
+                ),
+            )
         design_command = prefix + [
             stage,
             str(config_path),

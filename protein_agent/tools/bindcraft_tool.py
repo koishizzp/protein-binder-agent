@@ -57,13 +57,26 @@ class BindCraftTool(BaseTool):
                 ".venv/bin/python",
                 "venv/bin/python",
                 "env/bin/python",
+                "bindcraft_env/bin/python",
+                "pyrosetta_env/bin/python",
                 "../.venv/bin/python",
                 "../venv/bin/python",
+                "../env/bin/python",
                 "../bindcraft_env/bin/python",
                 "../pyrosetta_env/bin/python",
+                "../../.venv/bin/python",
+                "../../venv/bin/python",
+                "../../env/bin/python",
+                "../../bindcraft_env/bin/python",
+                "../../pyrosetta_env/bin/python",
             ):
                 add(str((root / relative).resolve()))
+            for sibling_name in ("bindcraft_env", "pyrosetta_env", "af2_binder_env", "protein_env"):
+                add(str((root.parent / sibling_name / "bin" / "python").resolve()))
         add(os.environ.get("CONDA_PYTHON_EXE"))
+        conda_prefix = os.environ.get("CONDA_PREFIX")
+        if conda_prefix:
+            add(str((Path(conda_prefix) / "bin" / "python").resolve()))
         add(os.environ.get("PYTHON"))
         add("python3")
         add("python")

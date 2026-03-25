@@ -79,6 +79,8 @@ class ProteinBinderService:
                 "proteina-complexa": {
                     "configured": bool(complexa_root),
                     "root": self.settings.complexa_dir,
+                    "cli": self.settings.complexa_cli,
+                    "python": self.settings.complexa_venv_python,
                     "config_dir": self.settings.complexa_config_dir,
                     "checkpoint_overrides": self.settings.complexa_checkpoint_overrides(),
                     "default_pipeline": self.settings.complexa_default_pipeline,
