@@ -45,6 +45,8 @@ class ProteinBinderService:
             mda=self.mda,
             result_dir=self.settings.result_dir,
             analysis_dir=self.settings.analysis_dir,
+            converted_structures_dir=self.settings.converted_structures_dir,
+            biopython_python=self.settings.biopython_python,
         )
 
     def available_modules(self) -> list[str]:
@@ -71,12 +73,14 @@ class ProteinBinderService:
                 "bindcraft": {
                     "configured": bool(bindcraft_root),
                     "root": self.settings.bindcraft_dir,
+                    "python": self.settings.bindcraft_python_path,
                     "entrypoint_exists": bool(bindcraft_root and (bindcraft_root / "bindcraft.py").exists()),
                 },
                 "proteina-complexa": {
                     "configured": bool(complexa_root),
                     "root": self.settings.complexa_dir,
                     "config_dir": self.settings.complexa_config_dir,
+                    "checkpoint_overrides": self.settings.complexa_checkpoint_overrides(),
                     "default_pipeline": self.settings.complexa_default_pipeline,
                 },
                 "mdanalysis": {

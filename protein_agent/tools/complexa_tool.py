@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import BaseTool, ToolResult
+from .structure_tool import CIF_SUFFIXES, COPY_TO_PDB_SUFFIXES
 
 
 class ComplexaTool(BaseTool):
@@ -47,11 +48,48 @@ class ComplexaTool(BaseTool):
         return self.complexa_dir / "configs"
 
     def _resolved_pipeline_config(self, pipeline: str) -> Path | None:
-        config_dir = self._resolved_config_dir()
         config_name = self.PIPELINE_CONFIGS.get(pipeline)
-        if not config_dir or not config_name:
+        if not self.complexa_dir or not config_name:
             return None
-        return config_dir / config_name
+
+        candidate_dirs: list[Path] = []
+        direct_config_dir = self._resolved_config_dir()
+        if direct_config_dir:
+            candidate_dirs.append(direct_config_dir)
+        candidate_dirs.extend(
+            [
+                self.complexa_dir / "configs",
+                self.complexa_dir / "config",
+                self.complexa_dir / "examples" / "configs",
+                self.complexa_dir / "configs" / "pipelines",
+            ]
+        )
+
+        seen: set[str] = set()
+        for directory in candidate_dirs:
+            resolved = str(directory.resolve())
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            candidate = directory / config_name
+            if candidate.exists():
+                return candidate
+
+        exact_hits = list(self.complexa_dir.rglob(config_name))
+        if exact_hits:
+            return exact_hits[0]
+
+        fuzzy_patterns = {
+            "binder": ("*binder*local*pipeline*.yaml", "*binder*pipeline*.yaml"),
+            "ligand_binder": ("*ligand*binder*local*pipeline*.yaml", "*ligand*binder*pipeline*.yaml"),
+            "ame": ("*ame*local*pipeline*.yaml", "*ame*pipeline*.yaml"),
+            "motif": ("*motif*local*pipeline*.yaml", "*motif*pipeline*.yaml"),
+        }
+        for pattern in fuzzy_patterns.get(pipeline, ()):
+            hits = list(self.complexa_dir.rglob(pattern))
+            if hits:
+                return hits[0]
+        return None
 
     def _command_prefix(self) -> list[str]:
         if self.cli_path:
@@ -72,7 +110,7 @@ class ComplexaTool(BaseTool):
             for path in root.rglob("*"):
                 if not path.is_file():
                     continue
-                if path.suffix.lower() not in {".pdb", ".csv", ".json", ".yaml", ".txt"}:
+                if path.suffix.lower() not in {".pdb", ".csv", ".json", ".yaml", ".txt"} | CIF_SUFFIXES | COPY_TO_PDB_SUFFIXES:
                     continue
                 try:
                     if path.stat().st_mtime < threshold:

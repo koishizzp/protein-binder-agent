@@ -3,6 +3,7 @@ from pathlib import Path
 
 from protein_agent.tools.base import ToolResult
 from protein_agent.tools.bindcraft_tool import BindCraftTool
+from protein_agent.tools.complexa_tool import ComplexaTool
 
 
 def test_tool_result_summary_success():
@@ -26,11 +27,14 @@ def test_bindcraft_tool_writes_upstream_style_settings(monkeypatch, tmp_path):
     target_pdb.write_text("HEADER TARGET\n", encoding="utf-8")
 
     class Completed:
-        returncode = 0
-        stdout = "done"
-        stderr = ""
+        def __init__(self, returncode=0, stdout="done", stderr=""):
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = stderr
 
     def fake_run(command, cwd, capture_output, text, timeout):
+        if command[-1] == "import pyrosetta":
+            return Completed()
         settings_path = Path(command[command.index("--settings") + 1])
         payload = json.loads(settings_path.read_text(encoding="utf-8"))
         assert payload["starting_pdb"] == str(target_pdb.resolve())
@@ -47,3 +51,15 @@ def test_bindcraft_tool_writes_upstream_style_settings(monkeypatch, tmp_path):
 
     assert result.success is True
     assert any(path.endswith(".pdb") for path in result.output_files)
+
+
+def test_complexa_tool_discovers_nested_pipeline_config(tmp_path):
+    complexa_dir = tmp_path / "Proteina-Complexa"
+    config_path = complexa_dir / "examples" / "configs" / "search_binder_local_pipeline.yaml"
+    config_path.parent.mkdir(parents=True)
+    config_path.write_text("defaults: []\n", encoding="utf-8")
+
+    tool = ComplexaTool(str(complexa_dir))
+    resolved = tool._resolved_pipeline_config("binder")
+
+    assert resolved == config_path

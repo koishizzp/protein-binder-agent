@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from .base import BaseTool, ToolResult
+from .structure_tool import CIF_SUFFIXES, COPY_TO_PDB_SUFFIXES
 
 
 class BindCraftTool(BaseTool):
@@ -34,6 +36,63 @@ class BindCraftTool(BaseTool):
         self.advanced_settings_file = (
             Path(advanced_settings_file).expanduser().resolve() if advanced_settings_file else None
         )
+
+    def _python_candidates(self) -> list[str]:
+        candidates: list[str] = []
+        seen: set[str] = set()
+
+        def add(value: str | None) -> None:
+            if not value:
+                return
+            normalized = value.strip()
+            if not normalized or normalized in seen:
+                return
+            seen.add(normalized)
+            candidates.append(normalized)
+
+        add(self.python_executable)
+        if self.bindcraft_dir:
+            root = self.bindcraft_dir
+            for relative in (
+                ".venv/bin/python",
+                "venv/bin/python",
+                "env/bin/python",
+                "../.venv/bin/python",
+                "../venv/bin/python",
+                "../bindcraft_env/bin/python",
+                "../pyrosetta_env/bin/python",
+            ):
+                add(str((root / relative).resolve()))
+        add(os.environ.get("CONDA_PYTHON_EXE"))
+        add(os.environ.get("PYTHON"))
+        add("python3")
+        add("python")
+        return candidates
+
+    def _python_exists(self, python_executable: str) -> bool:
+        if "/" in python_executable or "\\" in python_executable:
+            return Path(python_executable).exists()
+        return True
+
+    def _python_supports_pyrosetta(self, python_executable: str) -> bool:
+        if not self._python_exists(python_executable):
+            return False
+        try:
+            result = subprocess.run(
+                [python_executable, "-c", "import pyrosetta"],
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+            return result.returncode == 0
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _resolve_python_executable(self) -> str | None:
+        for candidate in self._python_candidates():
+            if self._python_supports_pyrosetta(candidate):
+                return candidate
+        return None
 
     def _default_settings_dir(self) -> Path | None:
         if self.settings_dir:
@@ -64,7 +123,7 @@ class BindCraftTool(BaseTool):
         for path in output_path.rglob("*"):
             if not path.is_file():
                 continue
-            if path.suffix.lower() not in {".pdb", ".csv", ".json", ".png", ".html"}:
+            if path.suffix.lower() not in {".pdb", ".csv", ".json", ".png", ".html"} | CIF_SUFFIXES | COPY_TO_PDB_SUFFIXES:
                 continue
             try:
                 if path.stat().st_mtime < threshold:
@@ -98,6 +157,16 @@ class BindCraftTool(BaseTool):
         bindcraft_entry = self.bindcraft_dir / "bindcraft.py"
         if not bindcraft_entry.exists():
             return ToolResult(False, self.name, error=f"BindCraft entrypoint not found: {bindcraft_entry}")
+        runtime_python = self._resolve_python_executable()
+        if not runtime_python:
+            return ToolResult(
+                False,
+                self.name,
+                error=(
+                    "No BindCraft Python interpreter with pyrosetta available was found. "
+                    "Set PROTEIN_BINDER_AGENT_BINDCRAFT_PYTHON to the correct environment."
+                ),
+            )
 
         output_path = (
             Path(output_dir).expanduser().resolve()
@@ -129,7 +198,7 @@ class BindCraftTool(BaseTool):
         )
 
         command = [
-            self.python_executable,
+            runtime_python,
             "-u",
             str(bindcraft_entry),
             "--settings",
@@ -164,6 +233,7 @@ class BindCraftTool(BaseTool):
             "run_name": run_name,
             "settings_file": str(settings_file),
             "output_dir": str(output_path),
+            "python_executable": runtime_python,
             "n_output_files": len(output_files),
             "returncode": result.returncode,
         }

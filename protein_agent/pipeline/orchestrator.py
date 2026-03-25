@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from protein_agent.pipeline.workflows import WORKFLOWS
+from protein_agent.tools import structure_tool
 from protein_agent.tools import BindCraftTool, ComplexaTool, MDAnalysisTool, ToolResult
 
 
@@ -18,12 +19,16 @@ class PipelineOrchestrator:
         mda: MDAnalysisTool,
         result_dir: str,
         analysis_dir: str,
+        converted_structures_dir: str,
+        biopython_python: str | None = None,
     ) -> None:
         self.bindcraft = bindcraft
         self.complexa = complexa
         self.mda = mda
         self.result_dir = Path(result_dir).expanduser().resolve()
         self.analysis_dir = Path(analysis_dir).expanduser().resolve()
+        self.converted_structures_dir = Path(converted_structures_dir).expanduser().resolve()
+        self.biopython_python = biopython_python
 
     def _scored_row(
         self,
@@ -58,8 +63,12 @@ class PipelineOrchestrator:
             "target_interface_count": int(residues.get("target_interface_count", 0)),
         }
 
-    def _discover_pdbs(self, tool_result: ToolResult) -> list[str]:
-        return [path for path in tool_result.output_files if path.lower().endswith(".pdb")]
+    def _discover_structure_files(self, tool_result: ToolResult) -> list[str]:
+        return [
+            path
+            for path in tool_result.output_files
+            if Path(path).suffix.lower() in structure_tool.PDB_SUFFIXES | structure_tool.CIF_SUFFIXES | structure_tool.COPY_TO_PDB_SUFFIXES
+        ]
 
     def full_design_and_analysis_pipeline(
         self,
@@ -101,7 +110,7 @@ class PipelineOrchestrator:
 
         tool_runs: dict[str, Any] = {}
         warnings: list[str] = []
-        generated_pdbs: list[tuple[str, str]] = []
+        generated_structures: list[tuple[str, str]] = []
 
         if resolved_use_complexa:
             task_name = complexa_task_name or target_path.stem
@@ -113,7 +122,7 @@ class PipelineOrchestrator:
                 eval_njobs=complexa_eval_njobs,
             )
             tool_runs["proteina-complexa"] = complexa_result.to_dict()
-            generated_pdbs.extend((path, "proteina-complexa") for path in self._discover_pdbs(complexa_result))
+            generated_structures.extend((path, "proteina-complexa") for path in self._discover_structure_files(complexa_result))
             if not complexa_result.success:
                 warnings.append(f"Proteina-Complexa failed: {complexa_result.error}")
 
@@ -128,12 +137,19 @@ class PipelineOrchestrator:
                 output_dir=str(run_root / "bindcraft"),
             )
             tool_runs["bindcraft"] = bindcraft_result.to_dict()
-            generated_pdbs.extend((path, "bindcraft") for path in self._discover_pdbs(bindcraft_result))
+            generated_structures.extend((path, "bindcraft") for path in self._discover_structure_files(bindcraft_result))
             if not bindcraft_result.success:
                 warnings.append(f"BindCraft failed: {bindcraft_result.error}")
 
         scored: list[dict[str, Any]] = []
-        for pdb_file, source in generated_pdbs:
+        for structure_file, source in generated_structures:
+            normalized = structure_tool.ensure_pdb_structure(
+                structure_file,
+                output_dir=str(self.converted_structures_dir / "generated" / run_name / source),
+                output_name=Path(structure_file).stem,
+                biopython_python=self.biopython_python,
+            )
+            pdb_file = normalized["resolved_path"]
             report_result = self.mda.run(
                 "full_report",
                 pdb_file,
@@ -142,10 +158,12 @@ class PipelineOrchestrator:
                 output_dir=str(analysis_root / Path(pdb_file).stem),
             )
             if not report_result.success or not isinstance(report_result.output, dict):
-                warnings.append(f"MDAnalysis failed for {pdb_file}: {report_result.error}")
+                warnings.append(f"MDAnalysis failed for {structure_file}: {report_result.error}")
                 continue
             row = self._scored_row(pdb_file=pdb_file, source=source, report=report_result.output)
             row["report_dir"] = str(analysis_root / Path(pdb_file).stem)
+            row["input_structure_file"] = structure_file
+            row["structure_conversion"] = normalized
             scored.append(row)
 
         scored.sort(key=lambda item: item["score"], reverse=True)
