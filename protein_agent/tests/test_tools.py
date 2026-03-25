@@ -1,11 +1,49 @@
-from tools.base import ToolResult
+import json
+from pathlib import Path
+
+from protein_agent.tools.base import ToolResult
+from protein_agent.tools.bindcraft_tool import BindCraftTool
 
 
 def test_tool_result_summary_success():
-    r = ToolResult(success=True, tool_name="x", output={"a": 1}, output_files=["f1"])
-    assert "成功" in r.to_llm_summary()
+    result = ToolResult(success=True, tool_name="x", output={"a": 1}, output_files=["f1"])
+    assert "success" in result.to_llm_summary()
 
 
 def test_tool_result_summary_failure():
-    r = ToolResult(success=False, tool_name="x", error="boom")
-    assert "失败" in r.to_llm_summary()
+    result = ToolResult(success=False, tool_name="x", error="boom")
+    assert "failure" in result.to_llm_summary()
+
+
+def test_bindcraft_tool_writes_upstream_style_settings(monkeypatch, tmp_path):
+    bindcraft_dir = tmp_path / "BindCraft"
+    (bindcraft_dir / "settings_filters").mkdir(parents=True)
+    (bindcraft_dir / "settings_advanced").mkdir(parents=True)
+    (bindcraft_dir / "bindcraft.py").write_text("print('bindcraft')", encoding="utf-8")
+    (bindcraft_dir / "settings_filters" / "default_filters.json").write_text("{}", encoding="utf-8")
+    (bindcraft_dir / "settings_advanced" / "default_4stage_multimer.json").write_text("{}", encoding="utf-8")
+    target_pdb = tmp_path / "target.pdb"
+    target_pdb.write_text("HEADER TARGET\n", encoding="utf-8")
+
+    class Completed:
+        returncode = 0
+        stdout = "done"
+        stderr = ""
+
+    def fake_run(command, cwd, capture_output, text, timeout):
+        settings_path = Path(command[command.index("--settings") + 1])
+        payload = json.loads(settings_path.read_text(encoding="utf-8"))
+        assert payload["starting_pdb"] == str(target_pdb.resolve())
+        assert payload["target_hotspot_residues"] == "A10,A12"
+        output_dir = Path(payload["design_path"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (output_dir / "best_design.pdb").write_text("MODEL\n", encoding="utf-8")
+        return Completed()
+
+    monkeypatch.setattr("protein_agent.tools.bindcraft_tool.subprocess.run", fake_run)
+
+    tool = BindCraftTool(str(bindcraft_dir))
+    result = tool.run(str(target_pdb), target_hotspot="A10,A12", run_name="demo")
+
+    assert result.success is True
+    assert any(path.endswith(".pdb") for path in result.output_files)

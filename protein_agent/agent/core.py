@@ -1,86 +1,114 @@
-import json
+from __future__ import annotations
 
-import anthropic
-from loguru import logger
+from typing import Any
 
-from .memory import AgentMemory
-from .prompts import SYSTEM_PROMPT
-from tools import BindCraftTool, ComplexaTool, MDAnalysisTool
+from protein_agent.agent.chat import (
+    best_design_from_result,
+    build_reasoning_context,
+    extras_from_latest_result,
+    is_reasoning_query,
+    normalize_chat_context,
+)
+from protein_agent.agent.memory import AgentMemory
+from protein_agent.agent.planner import LLMPlanner
+from protein_agent.agent.reasoner import ResultReasoner
+from protein_agent.agent.service import ProteinBinderService
+from protein_agent.config.settings import Settings, get_settings
 
 
 class ProteinBinderAgent:
-    def __init__(self, config: dict, api_key: str | None = None):
-        self.client = anthropic.Anthropic(api_key=api_key)
-        self.memory = AgentMemory()
-        self.model = config.get("model", "claude-opus-4-5")
-        self.max_iterations = config.get("max_iterations", 10)
+    def __init__(
+        self,
+        settings: Settings | None = None,
+        *,
+        planner: LLMPlanner | None = None,
+        service: ProteinBinderService | None = None,
+        reasoner: ResultReasoner | None = None,
+        memory: AgentMemory | None = None,
+    ) -> None:
+        self.settings = settings or get_settings()
+        self.planner = planner or LLMPlanner(self.settings)
+        self.service = service or ProteinBinderService(self.settings)
+        self.reasoner = reasoner or ResultReasoner(self.settings)
+        self.memory = memory or AgentMemory()
 
-        self.tools_map = {
-            "proteina_complexa": ComplexaTool(
-                complexa_dir=config["complexa_dir"],
-                venv_python=config["complexa_venv_python"],
-                config_dir=config["complexa_config_dir"],
-            ),
-            "bindcraft": BindCraftTool(bindcraft_dir=config["bindcraft_dir"]),
-            "mdanalysis": MDAnalysisTool(),
-        }
-        self.llm_tools = [t.get_schema() for t in self.tools_map.values()]
-
-    def run(self, user_request: str) -> str:
-        logger.info(f"收到请求: {user_request}")
+    def run(
+        self,
+        user_request: str,
+        *,
+        latest_result: dict[str, Any] | None = None,
+        reasoning_context: dict[str, Any] | None = None,
+        preferred_workflow: str | None = None,
+    ) -> dict[str, Any]:
         self.memory.add_user_message(user_request)
-        messages = self.memory.get_messages()
+        latest_result, previous_best_design = normalize_chat_context(
+            latest_result,
+            None,
+            reasoning_context,
+        )
 
-        for iteration in range(self.max_iterations):
-            logger.info(f"迭代 {iteration + 1}/{self.max_iterations}")
-
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=4096,
-                system=SYSTEM_PROMPT,
-                tools=self.llm_tools,
-                messages=messages,
+        if is_reasoning_query(user_request) and latest_result:
+            reply = self.reasoner.reply(
+                message=user_request,
+                latest_result=latest_result,
+                conversation=self.memory.get_messages(),
+                current_mode=str(reasoning_context.get("current_mode")) if isinstance(reasoning_context, dict) else "full_pipeline",
+                previous_best_design=previous_best_design,
             )
+            self.memory.add_assistant_message(reply)
+            return {
+                "chat_mode": "reasoning",
+                "reply": reply,
+                "reasoning_context": build_reasoning_context(
+                    "reasoning",
+                    latest_result,
+                    previous_best_design,
+                    current_mode=str(reasoning_context.get("current_mode")) if isinstance(reasoning_context, dict) else "full_pipeline",
+                ),
+                **extras_from_latest_result(latest_result),
+            }
 
-            if response.stop_reason == "tool_use":
-                tool_results = []
-                for block in response.content:
-                    if block.type == "tool_use":
-                        logger.info(
-                            "调用工具: {}，参数: {}",
-                            block.name,
-                            json.dumps(block.input, ensure_ascii=False)[:300],
-                        )
-                        result = self._execute_tool(block.name, block.input)
-                        logger.info(f"工具结果: {result.to_llm_summary()[:500]}")
-                        tool_results.append(
-                            {
-                                "type": "tool_result",
-                                "tool_use_id": block.id,
-                                "content": result.to_llm_summary(),
-                            }
-                        )
-                        self.memory.add_tool_result(block.name, result, inputs=block.input)
+        previous_request = latest_result.get("request") if isinstance(latest_result.get("request"), dict) else {}
+        plan = self.planner.plan(
+            user_request,
+            self.service.available_modules(),
+            previous_request=previous_request,
+            preferred_workflow=preferred_workflow,
+        )
 
-                messages = self.memory.get_messages()
-                messages.append({"role": "assistant", "content": response.content})
-                messages.append({"role": "user", "content": tool_results})
-                self.memory.messages = messages
+        if plan.get("needs_input"):
+            reply = str(plan.get("question") or "请补充执行所需的参数。")
+            self.memory.add_assistant_message(reply)
+            return {
+                "chat_mode": "execution",
+                "reply": reply,
+                "operation_plan": plan,
+                "reasoning_context": build_reasoning_context("execution", latest_result, previous_best_design),
+            }
 
-            elif response.stop_reason == "end_turn":
-                final_text = "".join(
-                    block.text for block in response.content if hasattr(block, "text")
-                )
-                self.memory.add_assistant_message(final_text)
-                logger.info("Agent 完成任务")
-                return final_text
+        result = self.service.execute_plan(plan)
+        reply = self.service.format_execution_reply(result)
+        self.memory.add_operation_record(
+            str(plan.get("module") or ""),
+            inputs=dict(plan.get("params") or {}),
+            success=bool(result.get("success", True)),
+            summary=reply,
+            output_files=list(result.get("output_files") or []),
+        )
+        self.memory.add_assistant_message(reply)
 
-        return "达到最大迭代次数，任务未完成。请检查日志。"
-
-    def _execute_tool(self, tool_name: str, tool_input: dict):
-        tool = self.tools_map.get(tool_name)
-        if not tool:
-            from tools.base import ToolResult
-
-            return ToolResult(success=False, tool_name=tool_name, error=f"未知工具: {tool_name}")
-        return tool.run(**tool_input)
+        current_best = best_design_from_result(result)
+        previous_label = str(current_best.get("pdb") or previous_best_design or "")
+        return {
+            "chat_mode": "execution",
+            "reply": reply,
+            "operation_plan": plan,
+            "operation_result": result,
+            "reasoning_context": build_reasoning_context(
+                "execution",
+                result,
+                previous_label,
+                current_mode=str(plan.get("module") or "full_pipeline"),
+            ),
+            **extras_from_latest_result(result),
+        }

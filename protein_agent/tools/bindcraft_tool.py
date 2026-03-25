@@ -1,91 +1,212 @@
+from __future__ import annotations
+
 import json
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from .base import BaseTool, ToolResult
 
 
 class BindCraftTool(BaseTool):
     name = "bindcraft"
-    description = "使用 BindCraft 进行蛋白质 binder 设计。基于 RFdiffusion + ProteinMPNN + AlphaFold2 流水线。"
+    description = (
+        "Run the BindCraft binder-design pipeline. "
+        "This wrapper writes a target settings JSON and launches bindcraft.py."
+    )
 
-    def __init__(self, bindcraft_dir: str, settings_dir: str | None = None):
-        self.bindcraft_dir = Path(bindcraft_dir)
-        self.settings_dir = Path(settings_dir) if settings_dir else self.bindcraft_dir / "settings_target"
+    def __init__(
+        self,
+        bindcraft_dir: str | None,
+        *,
+        python_executable: str = "python",
+        settings_dir: str | None = None,
+        filters_file: str | None = None,
+        advanced_settings_file: str | None = None,
+        timeout_seconds: int = 10800,
+    ) -> None:
+        self.bindcraft_dir = Path(bindcraft_dir).expanduser().resolve() if bindcraft_dir else None
+        self.python_executable = python_executable
+        self.timeout_seconds = timeout_seconds
+        self.settings_dir = Path(settings_dir).expanduser().resolve() if settings_dir else None
+        self.filters_file = Path(filters_file).expanduser().resolve() if filters_file else None
+        self.advanced_settings_file = (
+            Path(advanced_settings_file).expanduser().resolve() if advanced_settings_file else None
+        )
+
+    def _default_settings_dir(self) -> Path | None:
+        if self.settings_dir:
+            return self.settings_dir
+        if not self.bindcraft_dir:
+            return None
+        return self.bindcraft_dir / "settings_target"
+
+    def _default_filters_file(self) -> Path | None:
+        if self.filters_file:
+            return self.filters_file
+        if not self.bindcraft_dir:
+            return None
+        return self.bindcraft_dir / "settings_filters" / "default_filters.json"
+
+    def _default_advanced_file(self) -> Path | None:
+        if self.advanced_settings_file:
+            return self.advanced_settings_file
+        if not self.bindcraft_dir:
+            return None
+        return self.bindcraft_dir / "settings_advanced" / "default_4stage_multimer.json"
+
+    def _discover_outputs(self, output_path: Path, start_time: datetime) -> list[str]:
+        if not output_path.exists():
+            return []
+        files: list[str] = []
+        threshold = start_time.timestamp() - 2
+        for path in output_path.rglob("*"):
+            if not path.is_file():
+                continue
+            if path.suffix.lower() not in {".pdb", ".csv", ".json", ".png", ".html"}:
+                continue
+            try:
+                if path.stat().st_mtime < threshold:
+                    continue
+            except OSError:
+                continue
+            files.append(str(path))
+        return sorted(files)
 
     def run(
         self,
         target_pdb: str,
+        *,
         target_hotspot: str | None = None,
+        target_chains: str = "A",
         binder_length: int = 80,
         num_designs: int = 10,
         run_name: str = "bindcraft_run",
         output_dir: str | None = None,
+        binder_name: str | None = None,
         filters_file: str | None = None,
         advanced_settings_file: str | None = None,
+        length_window: int = 10,
     ) -> ToolResult:
-        output_path = Path(output_dir) if output_dir else self.bindcraft_dir / "outputs" / run_name
-        settings = {
-            "target_pdb": str(target_pdb),
-            "target_hotspot": target_hotspot or "",
-            "lengths": [binder_length - 10, binder_length + 10],
-            "number_of_final_designs": num_designs,
-            "output_dir": str(output_path),
-        }
-        settings_file = output_path / "settings.json"
+        target_path = Path(target_pdb).expanduser()
+        if not target_path.exists():
+            return ToolResult(False, self.name, error=f"Target PDB not found: {target_path}")
+        if not self.bindcraft_dir or not self.bindcraft_dir.exists():
+            return ToolResult(False, self.name, error="BindCraft directory is not configured or does not exist")
+
+        bindcraft_entry = self.bindcraft_dir / "bindcraft.py"
+        if not bindcraft_entry.exists():
+            return ToolResult(False, self.name, error=f"BindCraft entrypoint not found: {bindcraft_entry}")
+
+        output_path = (
+            Path(output_dir).expanduser().resolve()
+            if output_dir
+            else (self.bindcraft_dir / "outputs" / run_name).resolve()
+        )
         output_path.mkdir(parents=True, exist_ok=True)
-        settings_file.write_text(json.dumps(settings, indent=2))
 
-        filters = filters_file or str(self.settings_dir / "default_filters.json")
-        advanced = advanced_settings_file or str(self.settings_dir / "4stage_multimer.json")
+        settings_payload = {
+            "design_path": str(output_path),
+            "binder_name": binder_name or run_name,
+            "starting_pdb": str(target_path.resolve()),
+            "chains": target_chains,
+            "target_hotspot_residues": target_hotspot,
+            "lengths": [max(4, binder_length - length_window), binder_length + length_window],
+            "number_of_final_designs": num_designs,
+        }
 
-        cmd = [
-            "python",
-            str(self.bindcraft_dir / "bindcraft.py"),
+        settings_dir = self._default_settings_dir() or output_path
+        settings_dir.mkdir(parents=True, exist_ok=True)
+        settings_file = settings_dir / f"{run_name}.json"
+        settings_file.write_text(json.dumps(settings_payload, indent=2), encoding="utf-8")
+
+        resolved_filters = Path(filters_file).expanduser().resolve() if filters_file else self._default_filters_file()
+        resolved_advanced = (
+            Path(advanced_settings_file).expanduser().resolve()
+            if advanced_settings_file
+            else self._default_advanced_file()
+        )
+
+        command = [
+            self.python_executable,
+            "-u",
+            str(bindcraft_entry),
             "--settings",
             str(settings_file),
-            "--filters",
-            filters,
-            "--advanced",
-            advanced,
         ]
+        if resolved_filters:
+            command.extend(["--filters", str(resolved_filters)])
+        if resolved_advanced:
+            command.extend(["--advanced", str(resolved_advanced)])
+
+        start_time = datetime.now(timezone.utc)
         try:
             result = subprocess.run(
-                cmd,
+                command,
                 cwd=self.bindcraft_dir,
                 capture_output=True,
                 text=True,
-                timeout=10800,
+                timeout=self.timeout_seconds,
             )
-            output_files = list(output_path.glob("**/*.pdb")) + list(output_path.glob("**/*.csv"))
-            if result.returncode == 0:
-                return ToolResult(
-                    True,
-                    self.name,
-                    output=result.stdout[-3000:],
-                    output_files=[str(f) for f in output_files],
-                    metadata={
-                        "run_name": run_name,
-                        "n_designs": len([f for f in output_files if f.suffix == ".pdb"]),
-                    },
-                )
-            return ToolResult(False, self.name, error=result.stderr[-2000:])
         except subprocess.TimeoutExpired:
-            return ToolResult(False, self.name, error="BindCraft 超时（>3h）")
-        except Exception as e:
-            return ToolResult(False, self.name, error=str(e))
+            return ToolResult(
+                False,
+                self.name,
+                error=f"BindCraft timed out after {self.timeout_seconds} seconds",
+                command=command,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult(False, self.name, error=str(exc), command=command)
 
-    def get_schema(self) -> dict:
+        output_files = self._discover_outputs(output_path, start_time)
+        metadata = {
+            "run_name": run_name,
+            "settings_file": str(settings_file),
+            "output_dir": str(output_path),
+            "n_output_files": len(output_files),
+            "returncode": result.returncode,
+        }
+        if result.returncode == 0:
+            return ToolResult(
+                True,
+                self.name,
+                output={
+                    "settings": settings_payload,
+                    "stdout_tail": result.stdout[-4000:],
+                },
+                metadata=metadata,
+                output_files=output_files,
+                command=command,
+                stdout=result.stdout[-4000:],
+                stderr=result.stderr[-2000:],
+            )
+        return ToolResult(
+            False,
+            self.name,
+            error=result.stderr[-2000:] or result.stdout[-2000:] or "BindCraft exited with a non-zero code",
+            metadata=metadata,
+            output_files=output_files,
+            command=command,
+            stdout=result.stdout[-4000:],
+            stderr=result.stderr[-2000:],
+        )
+
+    def get_schema(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
             "input_schema": {
                 "type": "object",
                 "properties": {
-                    "target_pdb": {"type": "string", "description": "靶蛋白 PDB 文件路径"},
-                    "target_hotspot": {"type": "string", "description": "热点残基，如 A20,A45"},
-                    "binder_length": {"type": "integer", "description": "binder 残基数（中心值±10）"},
-                    "num_designs": {"type": "integer", "description": "生成 binder 数量"},
+                    "target_pdb": {"type": "string", "description": "Path to the target PDB file"},
+                    "target_hotspot": {
+                        "type": "string",
+                        "description": "Optional hotspot residues, e.g. A23,A25,A27-30",
+                    },
+                    "target_chains": {"type": "string", "description": "Target chains to keep, e.g. A or A,B"},
+                    "binder_length": {"type": "integer", "description": "Desired binder length"},
+                    "num_designs": {"type": "integer", "description": "Final accepted design count"},
                     "run_name": {"type": "string"},
                     "output_dir": {"type": "string"},
                 },

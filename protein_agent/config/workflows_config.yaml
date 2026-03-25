@@ -1,11 +1,14 @@
 default_workflow: balanced
 workflows:
   balanced:
+    description: Run Proteina-Complexa and BindCraft, then score all candidates with MDAnalysis.
     use_complexa: true
     use_bindcraft: true
   complexa_only:
+    description: Run only Proteina-Complexa.
     use_complexa: true
     use_bindcraft: false
   bindcraft_only:
+    description: Run only BindCraft.
     use_complexa: false
     use_bindcraft: true

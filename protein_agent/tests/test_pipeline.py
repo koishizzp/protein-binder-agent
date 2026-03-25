@@ -1,4 +1,4 @@
-from pipeline.validator import validate_ranking_row
+from protein_agent.pipeline.validator import validate_ranking_row
 
 
 def test_validate_ranking_row():

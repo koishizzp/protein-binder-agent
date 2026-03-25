@@ -1,16 +1,16 @@
 WORKFLOWS = {
     "balanced": {
-        "description": "Complexa + BindCraft 双路生成并统一评估",
+        "description": "Run Proteina-Complexa and BindCraft, then score both branches with MDAnalysis.",
         "use_complexa": True,
         "use_bindcraft": True,
     },
     "complexa_only": {
-        "description": "仅使用 Proteina-Complexa 生成",
+        "description": "Use only Proteina-Complexa generation.",
         "use_complexa": True,
         "use_bindcraft": False,
     },
     "bindcraft_only": {
-        "description": "仅使用 BindCraft 生成",
+        "description": "Use only BindCraft generation.",
         "use_complexa": False,
         "use_bindcraft": True,
     },

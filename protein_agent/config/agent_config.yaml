@@ -1,13 +1,33 @@
-model: claude-opus-4-5
-max_iterations: 15
+app_name: Protein Binder Agent
+log_level: INFO
+api_host: 0.0.0.0
+api_port: 8200
+request_timeout: 300
 
-bindcraft_dir: /path/to/external/BindCraft
-complexa_dir: /path/to/external/Proteina-Complexa
-complexa_venv_python: /path/to/external/Proteina-Complexa/.venv/bin/python
-complexa_config_dir: /path/to/external/Proteina-Complexa/configs
+# LLM variables reuse the same aliases as esm3-agent:
+# - PROTEIN_AGENT_OPENAI_API_KEY / OPENAI_API_KEY
+# - PROTEIN_AGENT_OPENAI_BASE_URL / OPENAI_BASE_URL
+# - PROTEIN_AGENT_LLM_MODEL / OPENAI_MODEL
+
+bindcraft_dir: /mnt/disk3/tio_nekton4/BindCraft/
+bindcraft_python_path: python
+bindcraft_settings_dir:
+bindcraft_filters_file:
+bindcraft_advanced_file:
+
+complexa_dir: /mnt/disk3/tio_nekton4/Proteina-Complexa/
+complexa_cli: complexa
+complexa_venv_python:
+complexa_config_dir:
+complexa_ckpt_path: /mnt/disk3/tio_nekton4/Proteina-Complexa/Protein-Target-160M-v1/
+complexa_ckpt_name: complexa.ckpt
+complexa_autoencoder_ckpt_path: /mnt/disk3/tio_nekton4/Proteina-Complexa/Protein-Target-160M-v1/complexa_ae.ckpt
+complexa_validate_before_run: true
 
 data_dir: ./data
-output_dir: ./data/results
+result_dir: ./data/results
+analysis_dir: ./data/analysis
+upload_dir: ./data/uploads
 
-log_level: INFO
-log_file: logs/agent.log
+default_target_chain: A
+default_binder_chain: B
