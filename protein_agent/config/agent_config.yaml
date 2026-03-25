@@ -1,0 +1,13 @@
+model: claude-opus-4-5
+max_iterations: 15
+
+bindcraft_dir: /path/to/external/BindCraft
+complexa_dir: /path/to/external/Proteina-Complexa
+complexa_venv_python: /path/to/external/Proteina-Complexa/.venv/bin/python
+complexa_config_dir: /path/to/external/Proteina-Complexa/configs
+
+data_dir: ./data
+output_dir: ./data/results
+
+log_level: INFO
+log_file: logs/agent.log
